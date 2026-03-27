@@ -47,6 +47,7 @@ export default function SplitFlapCell({ target, delay = 0, animationStyle = "nor
 
     // If animation is suppressed (e.g. during initial load), sync immediately and return
     if (suppressAnimation) {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       setCurrentChar(target);
       setCurrentColor("bg-zinc-900 text-white");
       setIsAnimating(false);
@@ -106,7 +107,7 @@ export default function SplitFlapCell({ target, delay = 0, animationStyle = "nor
       clearTimeout(watchdogTimeout);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [target, animationStyle, delay]);
+  }, [target, animationStyle, delay, suppressAnimation]);
 
   return (
     <div className={cn(

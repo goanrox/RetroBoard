@@ -40,43 +40,7 @@ export default function App() {
   const [isLoaded, setIsLoaded] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Load settings from localStorage
-  useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setSettings({
-          ...DEFAULT_SETTINGS,
-          ...parsed,
-          contentToggles: {
-            ...DEFAULT_SETTINGS.contentToggles,
-            ...(parsed.contentToggles || {})
-          }
-        });
-      } catch (e) {
-        console.error("Failed to load settings", e);
-      }
-    }
-    setIsLoaded(true);
-    
-    // Short delay to ensure initial board state is stable before first rotation
-    const initTimeout = setTimeout(() => {
-      setIsInitializing(false);
-    }, 2000);
-    
-    return () => clearTimeout(initTimeout);
-  }, []);
-
-  // Save settings to localStorage
-  useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-      soundManager.setEnabled(settings.sound);
-      hapticsManager.setEnabled(settings.haptics);
-    }
-  }, [settings, isLoaded]);
+  const isRotatingRef = useRef(false);
 
   const getNextContent = useCallback(async (forcedType?: string, shouldRefresh: boolean = false) => {
     const activeTypes: string[] = [];
@@ -183,9 +147,64 @@ export default function App() {
 
   const rotateContent = useCallback(async (forcedType?: string, shouldRefresh: boolean = false) => {
     if (settings.isPaused && !forcedType) return;
-    const next = await getNextContent(forcedType, shouldRefresh);
-    setCurrentText(next);
+    if (isRotatingRef.current) return;
+
+    isRotatingRef.current = true;
+    try {
+      const next = await getNextContent(forcedType, shouldRefresh);
+      setCurrentText(next);
+    } finally {
+      isRotatingRef.current = false;
+    }
   }, [getNextContent, settings.isPaused]);
+
+  // Load settings from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        setSettings({
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          contentToggles: {
+            ...DEFAULT_SETTINGS.contentToggles,
+            ...(parsed.contentToggles || {})
+          }
+        });
+      } catch (e) {
+        console.error("Failed to load settings", e);
+      }
+    }
+    setIsLoaded(true);
+  }, []);
+
+  // Handle initialization completion
+  useEffect(() => {
+    if (isLoaded && isInitializing) {
+      const initTimeout = setTimeout(() => {
+        setIsInitializing(false);
+        // Trigger the very first content rotation after a small extra delay
+        // to ensure the board is fully stable and rendered
+        setTimeout(() => {
+          if (!settings.isPaused) {
+            rotateContent();
+          }
+        }, 500);
+      }, 2000);
+      
+      return () => clearTimeout(initTimeout);
+    }
+  }, [isLoaded, isInitializing, settings.isPaused, rotateContent]);
+
+  // Save settings to localStorage
+  useEffect(() => {
+    if (isLoaded) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+      soundManager.setEnabled(settings.sound);
+      hapticsManager.setEnabled(settings.haptics);
+    }
+  }, [settings, isLoaded]);
 
   // Handle orientation lock in fullscreen
   useEffect(() => {
@@ -203,19 +222,19 @@ export default function App() {
     if (isLoaded && !settings.isPaused && !isInitializing) {
       rotateContent("weather");
     }
-  }, [settings.weatherLocationInput, settings.weatherUseCurrentLocation, settings.temperatureUnit, isInitializing]);
+  }, [settings.weatherLocationInput, settings.weatherUseCurrentLocation, settings.temperatureUnit]);
 
   useEffect(() => {
     if (isLoaded && !settings.isPaused && !isInitializing) {
       rotateContent("news", true);
     }
-  }, [settings.selectedNewsCategories, isInitializing]);
+  }, [settings.selectedNewsCategories]);
 
   useEffect(() => {
     if (isLoaded && !settings.isPaused && !isInitializing) {
       rotateContent("quote");
     }
-  }, [settings.quoteSource, isInitializing]);
+  }, [settings.quoteSource]);
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
