@@ -1,0 +1,5 @@
+{
+  "name": "RetroBoard",
+  "description": "A premium retro split-flap display for ambient information and inspiration.",
+  "requestFramePermissions": ["geolocation"]
+}
