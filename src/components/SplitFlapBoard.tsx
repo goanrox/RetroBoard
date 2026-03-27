@@ -8,10 +8,11 @@ interface SplitFlapBoardProps {
   cols?: number;
   animationStyle?: "subtle" | "normal" | "dramatic";
   size?: "sm" | "md" | "lg";
+  suppressAnimation?: boolean;
 }
 
-export default function SplitFlapBoard({ text, rows = 4, cols = 22, animationStyle = "normal", size = "md" }: SplitFlapBoardProps) {
-  const [formattedRows, setFormattedRows] = useState<string[]>(Array(rows).fill(" ".repeat(cols)));
+export default function SplitFlapBoard({ text, rows = 4, cols = 22, animationStyle = "normal", size = "md", suppressAnimation = false }: SplitFlapBoardProps) {
+  const [formattedRows, setFormattedRows] = useState<string[]>(() => formatTextToBoard(text, rows, cols));
 
   useEffect(() => {
     const newRows = formatTextToBoard(text, rows, cols);
@@ -39,6 +40,7 @@ export default function SplitFlapBoard({ text, rows = 4, cols = 22, animationSty
               delay={(rowIndex * cols + colIndex) * 10} // Staggered delay
               animationStyle={animationStyle}
               size={size}
+              suppressAnimation={suppressAnimation}
             />
           ))}
         </div>

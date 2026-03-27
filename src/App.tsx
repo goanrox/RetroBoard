@@ -38,6 +38,7 @@ export default function App() {
   const [currentText, setCurrentText] = useState("WELCOME TO RETROBOARD");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load settings from localStorage
@@ -59,6 +60,13 @@ export default function App() {
       }
     }
     setIsLoaded(true);
+    
+    // Short delay to ensure initial board state is stable before first rotation
+    const initTimeout = setTimeout(() => {
+      setIsInitializing(false);
+    }, 2000);
+    
+    return () => clearTimeout(initTimeout);
   }, []);
 
   // Save settings to localStorage
@@ -192,34 +200,34 @@ export default function App() {
 
   // Trigger immediate refresh when critical settings change
   useEffect(() => {
-    if (isLoaded && !settings.isPaused) {
+    if (isLoaded && !settings.isPaused && !isInitializing) {
       rotateContent("weather");
     }
-  }, [settings.weatherLocationInput, settings.weatherUseCurrentLocation, settings.temperatureUnit]);
+  }, [settings.weatherLocationInput, settings.weatherUseCurrentLocation, settings.temperatureUnit, isInitializing]);
 
   useEffect(() => {
-    if (isLoaded && !settings.isPaused) {
+    if (isLoaded && !settings.isPaused && !isInitializing) {
       rotateContent("news", true);
     }
-  }, [settings.selectedNewsCategories]);
+  }, [settings.selectedNewsCategories, isInitializing]);
 
   useEffect(() => {
-    if (isLoaded && !settings.isPaused) {
+    if (isLoaded && !settings.isPaused && !isInitializing) {
       rotateContent("quote");
     }
-  }, [settings.quoteSource]);
+  }, [settings.quoteSource, isInitializing]);
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
     
-    if (!settings.isPaused) {
+    if (!settings.isPaused && !isInitializing) {
       timerRef.current = setInterval(rotateContent, settings.interval * 1000);
     }
 
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [rotateContent, settings.interval, settings.isPaused]);
+  }, [rotateContent, settings.interval, settings.isPaused, isInitializing]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -275,6 +283,7 @@ export default function App() {
             cols={settings.orientation === "landscape" ? 22 : 10}
             animationStyle={settings.animationStyle}
             size={settings.orientation === "landscape" ? "md" : "sm"}
+            suppressAnimation={isInitializing}
           />
         </motion.div>
 

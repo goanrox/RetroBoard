@@ -25,10 +25,11 @@ interface SplitFlapCellProps {
   delay?: number;
   animationStyle?: "subtle" | "normal" | "dramatic";
   size?: "sm" | "md" | "lg";
+  suppressAnimation?: boolean;
 }
 
-export default function SplitFlapCell({ target, delay = 0, animationStyle = "normal", size = "md" }: SplitFlapCellProps) {
-  const [currentChar, setCurrentChar] = useState(" ");
+export default function SplitFlapCell({ target, delay = 0, animationStyle = "normal", size = "md", suppressAnimation = false }: SplitFlapCellProps) {
+  const [currentChar, setCurrentChar] = useState(target);
   const [isAnimating, setIsAnimating] = useState(false);
   const [currentColor, setCurrentColor] = useState("bg-zinc-900 text-white");
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -43,6 +44,14 @@ export default function SplitFlapCell({ target, delay = 0, animationStyle = "nor
   useEffect(() => {
     // If target is already reached and we aren't animating, do nothing
     if (target === currentChar && !isAnimating) return;
+
+    // If animation is suppressed (e.g. during initial load), sync immediately and return
+    if (suppressAnimation) {
+      setCurrentChar(target);
+      setCurrentColor("bg-zinc-900 text-white");
+      setIsAnimating(false);
+      return;
+    }
 
     const currentAnimId = ++animationIdRef.current;
 
@@ -107,7 +116,7 @@ export default function SplitFlapCell({ target, delay = 0, animationStyle = "nor
       <AnimatePresence mode="wait">
         <motion.div
           key={currentChar + currentColor}
-          initial={{ rotateX: -90, opacity: 0 }}
+          initial={suppressAnimation ? false : { rotateX: -90, opacity: 0 }}
           animate={{ rotateX: 0, opacity: 1 }}
           exit={{ rotateX: 90, opacity: 0 }}
           transition={{ duration: 0.05, ease: "easeInOut" }}
