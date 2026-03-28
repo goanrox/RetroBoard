@@ -7,6 +7,7 @@ import { hapticsManager } from "./lib/haptics";
 import { motion, AnimatePresence } from "motion/react";
 
 const STORAGE_KEY = "retroboard_settings";
+const ALLOW_CALENDAR_IN_ROTATION = false; // Temporary test flag to isolate tile corruption
 
 const DEFAULT_SETTINGS = {
   interval: 15,
@@ -36,24 +37,53 @@ const DEFAULT_SETTINGS = {
 export default function App() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [currentText, setCurrentText] = useState("WELCOME TO RETROBOARD");
+  const [boardVersion, setBoardVersion] = useState(Date.now());
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
+  const isTransitioningRef = useRef(false);
+  const [timerResetTick, forceTimerReset] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const isRotatingRef = useRef(false);
 
+  const handleBoardTransitionStart = useCallback(() => {
+    console.log("[App] Board transition started");
+    isTransitioningRef.current = true;
+  }, []);
+
+  const handleBoardTransitionEnd = useCallback(() => {
+    console.log("[App] Board transition ended");
+    isTransitioningRef.current = false;
+    forceTimerReset((n) => n + 1);
+  }, []);
+
+  const currentContentIndexRef = useRef(0);
   const getNextContent = useCallback(async (forcedType?: string, shouldRefresh: boolean = false) => {
     const activeTypes: string[] = [];
     if (settings.contentToggles.quotes) activeTypes.push("quote");
     if (settings.contentToggles.weather) activeTypes.push("weather");
     if (settings.contentToggles.headlines) activeTypes.push("news");
-    if (settings.contentToggles.calendar && settings.calendarFeedUrl && settings.calendarFeedValid) activeTypes.push("calendar");
+    if (ALLOW_CALENDAR_IN_ROTATION && settings.contentToggles.calendar && settings.calendarFeedUrl && settings.calendarFeedValid) {
+      activeTypes.push("calendar");
+    } else if (settings.contentToggles.calendar) {
+      console.log("[App] Skipping calendar because not configured");
+    }
     if (settings.contentToggles.custom) activeTypes.push("custom");
 
     if (activeTypes.length === 0) return "SELECT CONTENT SOURCE";
     
-    // Pick a random type or use forced type
-    const type = forcedType || activeTypes[Math.floor(Math.random() * activeTypes.length)];
+    let type: string;
+    if (forcedType) {
+      type = forcedType;
+    } else {
+      // Round-robin selection
+      if (currentContentIndexRef.current >= activeTypes.length) {
+        currentContentIndexRef.current = 0;
+      }
+      type = activeTypes[currentContentIndexRef.current];
+      console.log(`[App] Rotating content type: ${type}`);
+      currentContentIndexRef.current = (currentContentIndexRef.current + 1) % activeTypes.length;
+    }
 
     try {
       if (type === "custom") {
@@ -114,6 +144,9 @@ export default function App() {
       }
 
       const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`API returned status ${response.status}`);
+      }
       const data = await response.json();
 
       if (data.lines && data.lines.length > 0) {
@@ -131,7 +164,7 @@ export default function App() {
       
       throw new Error("No data from API");
     } catch (error) {
-      console.error(`Error fetching ${type}: [REDACTED]`);
+      console.error(`Error fetching ${type}:`, error);
       // Fallback to local mock data
       const fallbacks: Record<string, string[]> = {
         quote: QUOTES,
@@ -147,16 +180,43 @@ export default function App() {
 
   const rotateContent = useCallback(async (forcedType?: string, shouldRefresh: boolean = false) => {
     if (settings.isPaused && !forcedType) return;
-    if (isRotatingRef.current) return;
+    if (isRotatingRef.current || isTransitioningRef.current) {
+      console.log(`[App] Rotation skipped. Rotating: ${isRotatingRef.current}, Transitioning: ${isTransitioningRef.current}`);
+      return;
+    }
 
     isRotatingRef.current = true;
     try {
+      console.log(`[App] Starting rotation... Target: ${forcedType || "auto"}`);
       const next = await getNextContent(forcedType, shouldRefresh);
+      console.log(`[App] Content fetched: "${next.substring(0, 20)}${next.length > 20 ? "..." : ""}"`);
       setCurrentText(next);
+      setBoardVersion(Date.now());
     } finally {
       isRotatingRef.current = false;
     }
   }, [getNextContent, settings.isPaused]);
+
+  // Background Calendar Refresh (Passive)
+  useEffect(() => {
+    if (settings.contentToggles.calendar && settings.calendarFeedUrl && settings.calendarFeedValid) {
+      const refreshInterval = 5 * 60 * 1000; // 5 minutes
+      const refresh = async () => {
+        if (isTransitioningRef.current) return; // Don't fetch during active transition to be safe
+        console.log("[App] Background calendar refresh started...");
+        try {
+          const url = `/api/calendar?preference=${settings.calendarPreference}&url=${encodeURIComponent(settings.calendarFeedUrl)}&refresh=true`;
+          await fetch(url);
+          console.log("[App] Background calendar refresh complete (cached on server).");
+        } catch (e) {
+          console.warn("[App] Background calendar refresh failed.");
+        }
+      };
+
+      const interval = setInterval(refresh, refreshInterval);
+      return () => clearInterval(interval);
+    }
+  }, [settings.contentToggles.calendar, settings.calendarFeedUrl, settings.calendarFeedValid, settings.calendarPreference]);
 
   // Load settings from localStorage
   useEffect(() => {
@@ -237,16 +297,22 @@ export default function App() {
   }, [settings.quoteSource]);
 
   useEffect(() => {
-    if (timerRef.current) clearInterval(timerRef.current);
+    if (timerRef.current) clearTimeout(timerRef.current);
     
-    if (!settings.isPaused && !isInitializing) {
-      timerRef.current = setInterval(rotateContent, settings.interval * 1000);
+    // Transition-complete-driven flow:
+    // Only schedule the next rotation if we are NOT currently transitioning
+    // and NOT initializing.
+    if (!settings.isPaused && !isInitializing && !isTransitioningRef.current) {
+      console.log(`[App] Scheduling next rotation in ${settings.interval}s`);
+      timerRef.current = setTimeout(() => {
+        rotateContent();
+      }, settings.interval * 1000);
     }
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (timerRef.current) clearTimeout(timerRef.current);
     };
-  }, [rotateContent, settings.interval, settings.isPaused, isInitializing]);
+  }, [rotateContent, settings.interval, settings.isPaused, isInitializing, timerResetTick]);
 
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
@@ -298,11 +364,14 @@ export default function App() {
         >
           <SplitFlapBoard 
             text={currentText} 
+            version={boardVersion}
             rows={settings.orientation === "landscape" ? 6 : 10}
             cols={settings.orientation === "landscape" ? 22 : 10}
             animationStyle={settings.animationStyle}
             size={settings.orientation === "landscape" ? "md" : "sm"}
             suppressAnimation={isInitializing}
+            onTransitionStart={handleBoardTransitionStart}
+            onTransitionEnd={handleBoardTransitionEnd}
           />
         </motion.div>
 

@@ -1,23 +1,85 @@
 import SplitFlapCell from "./SplitFlapCell";
 import { formatTextToBoard } from "@/src/lib/layout";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback, useMemo, useLayoutEffect } from "react";
 
 interface SplitFlapBoardProps {
   text: string;
+  version?: number;
   rows?: number;
   cols?: number;
   animationStyle?: "subtle" | "normal" | "dramatic";
   size?: "sm" | "md" | "lg";
   suppressAnimation?: boolean;
+  onTransitionStart?: () => void;
+  onTransitionEnd?: () => void;
 }
 
-export default function SplitFlapBoard({ text, rows = 4, cols = 22, animationStyle = "normal", size = "md", suppressAnimation = false }: SplitFlapBoardProps) {
-  const [formattedRows, setFormattedRows] = useState<string[]>(() => formatTextToBoard(text, rows, cols));
+export default function SplitFlapBoard({ 
+  text, 
+  version = 0,
+  rows = 4, 
+  cols = 22, 
+  animationStyle = "normal", 
+  size = "md", 
+  suppressAnimation = false,
+  onTransitionStart,
+  onTransitionEnd
+}: SplitFlapBoardProps) {
+  // Synchronously derive formatted rows to prevent one-render desync with version
+  const formattedRows = useMemo(() => formatTextToBoard(text, rows, cols), [text, rows, cols]);
+  
+  const completedCountRef = useRef(0);
+  const totalCells = rows * cols;
+  const currentVersionRef = useRef(version);
+  const hasEndedRef = useRef(false);
+  const onTransitionStartRef = useRef(onTransitionStart);
+  const onTransitionEndRef = useRef(onTransitionEnd);
 
   useEffect(() => {
-    const newRows = formatTextToBoard(text, rows, cols);
-    setFormattedRows(newRows);
-  }, [text, rows, cols]);
+    onTransitionStartRef.current = onTransitionStart;
+  });
+  useEffect(() => {
+    onTransitionEndRef.current = onTransitionEnd;
+  });
+
+  const handleCellComplete = useCallback(() => {
+    completedCountRef.current++;
+    if (completedCountRef.current >= totalCells && !hasEndedRef.current) {
+      hasEndedRef.current = true;
+      console.log(`[Board] All cells complete. Version: ${currentVersionRef.current}`);
+      onTransitionEndRef.current?.();
+    }
+  }, [totalCells]);
+
+  useEffect(() => {
+    if (!suppressAnimation) {
+      // Synchronous reset before children can report completion for the new version
+      currentVersionRef.current = version;
+      completedCountRef.current = 0;
+      hasEndedRef.current = false;
+      console.log(`[Board] Transition started. Session: ${version}`);
+      onTransitionStartRef.current?.();
+
+      // Board-level watchdog: Force completion if cells take too long
+      const maxDelay = (rows * cols) * 10;
+      const steps = animationStyle === "subtle" ? 5 : animationStyle === "dramatic" ? 15 : 10;
+      const animDuration = steps * 100;
+      const totalDuration = maxDelay + animDuration + 2000; // 2s safety buffer
+
+      const watchdog = setTimeout(() => {
+        if (!hasEndedRef.current && currentVersionRef.current === version) {
+          console.warn(`[Board] Watchdog triggered for session ${version}. Completed: ${completedCountRef.current}/${totalCells}`);
+          hasEndedRef.current = true;
+          onTransitionEndRef.current?.();
+        }
+      }, totalDuration);
+
+      return () => clearTimeout(watchdog);
+    } else {
+      onTransitionStartRef.current?.();
+      onTransitionEndRef.current?.();
+    }
+  }, [version, rows, cols, animationStyle, suppressAnimation, totalCells]);
 
   return (
     <div className="relative p-4 sm:p-6 md:p-8 lg:p-10 bg-zinc-950 rounded-xl shadow-2xl border border-zinc-800 flex flex-col gap-1 sm:gap-2 md:gap-3 lg:gap-4 items-center justify-center">
@@ -41,6 +103,8 @@ export default function SplitFlapBoard({ text, rows = 4, cols = 22, animationSty
               animationStyle={animationStyle}
               size={size}
               suppressAnimation={suppressAnimation}
+              version={version}
+              onComplete={handleCellComplete}
             />
           ))}
         </div>

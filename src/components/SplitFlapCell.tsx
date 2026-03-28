@@ -26,88 +26,108 @@ interface SplitFlapCellProps {
   animationStyle?: "subtle" | "normal" | "dramatic";
   size?: "sm" | "md" | "lg";
   suppressAnimation?: boolean;
+  version?: number;
+  onComplete?: () => void;
 }
 
-export default function SplitFlapCell({ target, delay = 0, animationStyle = "normal", size = "md", suppressAnimation = false }: SplitFlapCellProps) {
+export default function SplitFlapCell({ 
+  target, 
+  delay = 0, 
+  animationStyle = "normal", 
+  size = "md", 
+  suppressAnimation = false,
+  version = 0,
+  onComplete
+}: SplitFlapCellProps) {
   const [currentChar, setCurrentChar] = useState(target);
-  const [isAnimating, setIsAnimating] = useState(false);
   const [currentColor, setCurrentColor] = useState("bg-zinc-900 text-white");
+  
+  // Refs to track latest state for async callbacks (watchdog, animation loops)
+  const currentCharRef = useRef(currentChar);
+  const currentColorRef = useRef(currentColor);
+  const onCompleteRef = useRef(onComplete);
+  const reportedVersionRef = useRef(-1);
+  const watchdogRef = useRef<NodeJS.Timeout | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const animationIdRef = useRef(0);
+
+  // Sync refs with state/props
+  useEffect(() => {
+    currentCharRef.current = currentChar;
+    currentColorRef.current = currentColor;
+    onCompleteRef.current = onComplete;
+  });
+
+  useEffect(() => {
+    animationIdRef.current++;
+    const myAnimId = animationIdRef.current;
+    const myVersion = version;
+
+    if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    if (watchdogRef.current) clearTimeout(watchdogRef.current);
+
+    const settle = () => {
+      setCurrentChar(target);
+      setCurrentColor("bg-zinc-900 text-white");
+      if (reportedVersionRef.current !== myVersion) {
+        reportedVersionRef.current = myVersion;
+        onCompleteRef.current?.();
+      }
+    };
+
+    if (suppressAnimation) {
+      settle();
+      return;
+    }
+
+    const steps = animationStyle === "subtle" ? 5 : animationStyle === "dramatic" ? 15 : 10;
+
+    const runAnimation = (step: number) => {
+      if (myAnimId !== animationIdRef.current) return;
+
+      if (step < steps) {
+        const randomChar = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
+        const randomColor = COLORS[Math.floor(Math.random() * COLORS.length)];
+        setCurrentChar(randomChar);
+        setCurrentColor(randomColor);
+        soundManager.playClick();
+        hapticsManager.vibrate();
+        timeoutRef.current = setTimeout(() => runAnimation(step + 1), 50 + Math.random() * 50);
+      } else {
+        soundManager.playClick();
+        hapticsManager.vibrate();
+        settle();
+      }
+    };
+
+    timeoutRef.current = setTimeout(() => runAnimation(0), delay);
+
+    const maxDuration = delay + steps * 120 + 2000;
+    watchdogRef.current = setTimeout(() => {
+      if (myAnimId === animationIdRef.current) {
+        console.log(`[Cell] Watchdog triggered for version ${myVersion}`);
+        settle();
+      }
+    }, maxDuration);
+
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      if (watchdogRef.current) clearTimeout(watchdogRef.current);
+    };
+  }, [version, suppressAnimation, animationStyle, delay]);
+
+  useEffect(() => {
+    if (suppressAnimation) {
+      setCurrentChar(target);
+      setCurrentColor("bg-zinc-900 text-white");
+    }
+  }, [target, suppressAnimation]);
 
   const sizeClasses = {
     sm: "w-6 h-9 text-lg sm:w-8 sm:h-12 sm:text-2xl",
     md: "w-8 h-12 sm:w-10 sm:h-14 md:w-12 md:h-18 lg:w-14 lg:h-20 text-2xl sm:text-3xl md:text-4xl lg:text-5xl",
     lg: "w-10 h-15 sm:w-14 sm:h-20 md:w-18 md:h-24 lg:w-22 lg:h-30 text-3xl sm:text-5xl md:text-6xl lg:text-7xl",
   };
-
-  useEffect(() => {
-    // If target is already reached and we aren't animating, do nothing
-    if (target === currentChar && !isAnimating) return;
-
-    // If animation is suppressed (e.g. during initial load), sync immediately and return
-    if (suppressAnimation) {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-      setCurrentChar(target);
-      setCurrentColor("bg-zinc-900 text-white");
-      setIsAnimating(false);
-      return;
-    }
-
-    const currentAnimId = ++animationIdRef.current;
-
-    const startAnimation = () => {
-      if (currentAnimId !== animationIdRef.current) return;
-
-      setIsAnimating(true);
-      let steps = animationStyle === "subtle" ? 5 : animationStyle === "dramatic" ? 15 : 10;
-      let currentStep = 0;
-
-      const animate = () => {
-        // Guard against stale animation loops from older transitions
-        if (currentAnimId !== animationIdRef.current) return;
-
-        if (currentStep < steps) {
-          const randomChar = CHARACTERS[Math.floor(Math.random() * CHARACTERS.length)];
-          const randomColor = COLORS[Math.floor(Math.random() * COLORS.length)];
-          
-          setCurrentChar(randomChar);
-          setCurrentColor(randomColor);
-          soundManager.playClick();
-          hapticsManager.vibrate();
-
-          currentStep++;
-          timeoutRef.current = setTimeout(animate, 50 + Math.random() * 50);
-        } else {
-          // Final settle to target character
-          setCurrentChar(target);
-          setCurrentColor("bg-zinc-900 text-white");
-          setIsAnimating(false);
-          soundManager.playClick();
-          hapticsManager.vibrate();
-        }
-      };
-
-      animate();
-    };
-
-    const initialDelayTimeout = setTimeout(startAnimation, delay);
-
-    // Watchdog: Force reset after 5 seconds if still animating or stuck in colored state
-    const watchdogTimeout = setTimeout(() => {
-      if (currentAnimId === animationIdRef.current) {
-        setCurrentChar(target);
-        setCurrentColor("bg-zinc-900 text-white");
-        setIsAnimating(false);
-      }
-    }, 5000 + delay);
-
-    return () => {
-      clearTimeout(initialDelayTimeout);
-      clearTimeout(watchdogTimeout);
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    };
-  }, [target, animationStyle, delay, suppressAnimation]);
 
   return (
     <div className={cn(
