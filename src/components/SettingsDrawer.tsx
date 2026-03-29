@@ -1,4 +1,4 @@
-import { Settings, X, Volume2, VolumeX, Smartphone, SmartphoneNfc, Maximize, Minimize, Play, Pause, MapPin, Newspaper, Calendar, LogOut, Trash2 } from "lucide-react";
+import { Settings, X, Volume2, VolumeX, Smartphone, SmartphoneNfc, Maximize, Minimize, Play, Pause, MapPin, Newspaper, Calendar, LogOut, Trash2, Clock } from "lucide-react";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -11,6 +11,7 @@ interface SettingsDrawerProps {
       headlines: boolean;
       calendar: boolean;
       custom: boolean;
+      datetime: boolean;
     };
     weatherLocationInput: string;
     weatherUseCurrentLocation: boolean;
@@ -692,23 +693,25 @@ export default function SettingsDrawer({ settings, onUpdate, onToggleFullscreen,
                 <section>
                   <label className="text-[10px] uppercase tracking-[0.2em] text-zinc-500 font-bold mb-4 block">Content Sources</label>
                   <div className="space-y-2">
-                    {Object.entries(settings.contentToggles).map(([key, enabled]) => {
-                      const isCalendar = key === "calendar";
-                      const isCalendarDisabled = isCalendar && (!settings.calendarFeedUrl || !settings.calendarFeedValid);
-                      
-                      return (
-                        <button
-                          key={key}
-                          onClick={() => toggleContent(key as keyof typeof settings.contentToggles)}
-                          disabled={isCalendarDisabled}
-                          className={`w-full flex items-center justify-between p-4 rounded-xl border text-sm font-semibold transition-all ${
-                            enabled ? "bg-zinc-900/50 border-zinc-700 text-white" : "bg-zinc-950 border-zinc-900 text-zinc-600"
-                          } ${isCalendarDisabled ? "opacity-30 grayscale cursor-not-allowed" : ""}`}
-                        >
-                          <div className="flex items-center gap-3">
-                            {isCalendar && <Calendar size={14} className={enabled ? "text-white" : "text-zinc-700"} />}
-                            <span className="capitalize">{key}</span>
-                          </div>
+                        {Object.entries(settings.contentToggles).map(([key, enabled]) => {
+                          const isCalendar = key === "calendar";
+                          const isDateTime = key === "datetime";
+                          const isCalendarDisabled = isCalendar && (!settings.calendarFeedUrl || !settings.calendarFeedValid);
+                          
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => toggleContent(key as keyof typeof settings.contentToggles)}
+                              disabled={isCalendarDisabled}
+                              className={`w-full flex items-center justify-between p-4 rounded-xl border text-sm font-semibold transition-all ${
+                                enabled ? "bg-zinc-900/50 border-zinc-700 text-white" : "bg-zinc-950 border-zinc-900 text-zinc-600"
+                              } ${isCalendarDisabled ? "opacity-30 grayscale cursor-not-allowed" : ""}`}
+                            >
+                              <div className="flex items-center gap-3">
+                                {isCalendar && <Calendar size={14} className={enabled ? "text-white" : "text-zinc-700"} />}
+                                {isDateTime && <Clock size={14} className={enabled ? "text-white" : "text-zinc-700"} />}
+                                <span className="capitalize">{key === "datetime" ? "Date & Time" : key}</span>
+                              </div>
                           <div className="flex items-center gap-3">
                             {isCalendar && !settings.calendarFeedValid && settings.calendarFeedUrl && (
                               <span className="text-[8px] text-red-500/70 font-bold uppercase tracking-wider">Needs Test</span>

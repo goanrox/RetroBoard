@@ -41,20 +41,14 @@ export default function SplitFlapCell({
 }: SplitFlapCellProps) {
   const [currentChar, setCurrentChar] = useState(target);
   const [currentColor, setCurrentColor] = useState("bg-zinc-900 text-white");
-  
-  // Refs to track latest state for async callbacks (watchdog, animation loops)
-  const currentCharRef = useRef(currentChar);
-  const currentColorRef = useRef(currentColor);
+
   const onCompleteRef = useRef(onComplete);
   const reportedVersionRef = useRef(-1);
   const watchdogRef = useRef<NodeJS.Timeout | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const animationIdRef = useRef(0);
 
-  // Sync refs with state/props
   useEffect(() => {
-    currentCharRef.current = currentChar;
-    currentColorRef.current = currentColor;
     onCompleteRef.current = onComplete;
   });
 
@@ -114,7 +108,7 @@ export default function SplitFlapCell({
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       if (watchdogRef.current) clearTimeout(watchdogRef.current);
     };
-  }, [version, suppressAnimation, animationStyle, delay]);
+  }, [version, suppressAnimation, animationStyle, delay, target]);
 
   useEffect(() => {
     if (suppressAnimation) {
@@ -134,7 +128,7 @@ export default function SplitFlapCell({
       "relative bg-zinc-950 rounded-sm overflow-hidden shadow-inner border border-zinc-800 flex items-center justify-center font-mono font-bold select-none",
       sizeClasses[size]
     )}>
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="popLayout">
         <motion.div
           key={currentChar + currentColor}
           initial={suppressAnimation ? false : { rotateX: -90, opacity: 0 }}

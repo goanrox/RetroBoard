@@ -8,12 +8,19 @@ class SoundManager {
     }
   }
 
+  private lastPlayTime: number = 0;
+
   setEnabled(enabled: boolean) {
     this.enabled = enabled;
   }
 
   playClick() {
     if (!this.enabled || !this.context) return;
+    
+    // Throttle to prevent audio context overload during mass animations
+    const now = Date.now();
+    if (now - this.lastPlayTime < 15) return;
+    this.lastPlayTime = now;
 
     if (this.context.state === 'suspended') {
       this.context.resume();

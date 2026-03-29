@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS = {
     headlines: true,
     calendar: false,
     custom: true,
+    datetime: true,
   },
   weatherLocationInput: "LONDON",
   weatherUseCurrentLocation: false,
@@ -63,6 +64,7 @@ export default function App() {
     if (settings.contentToggles.quotes) activeTypes.push("quote");
     if (settings.contentToggles.weather) activeTypes.push("weather");
     if (settings.contentToggles.headlines) activeTypes.push("news");
+    if (settings.contentToggles.datetime) activeTypes.push("datetime");
     if (ALLOW_CALENDAR_IN_ROTATION && settings.contentToggles.calendar && settings.calendarFeedUrl && settings.calendarFeedValid) {
       activeTypes.push("calendar");
     } else if (settings.contentToggles.calendar) {
@@ -86,6 +88,23 @@ export default function App() {
     }
 
     try {
+      if (type === "datetime") {
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          month: 'long', 
+          day: 'numeric',
+          year: 'numeric'
+        }).toUpperCase();
+        const timeStr = now.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        });
+        return `${dateStr} ${timeStr}`;
+      }
+
       if (type === "custom") {
         const pool = CUSTOM_MESSAGES;
         let next = pool[Math.floor(Math.random() * pool.length)];
