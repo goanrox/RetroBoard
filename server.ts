@@ -418,15 +418,31 @@ async function startServer() {
   app.get("/api/weather", async (req, res) => {
     let { lat, lon, city, q, unit } = req.query;
     
-    // Geocode if q is provided
+  // Geocode if q is provided
     if (q && (!lat || !lon)) {
+      const qStr = (q as string).trim();
+      const isZip = /^\d{5}$/.test(qStr);
       try {
-        const geoRes = await robustFetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q as string)}&count=1`);
-        const geoData = await geoRes.json();
-        if (geoData.results && geoData.results[0]) {
-          lat = geoData.results[0].latitude.toString();
-          lon = geoData.results[0].longitude.toString();
-          city = geoData.results[0].name.toUpperCase();
+        if (isZip) {
+          // US ZIP code lookup
+          const zipRes = await robustFetch(`https://api.zippopotam.us/us/${qStr}`);
+          if (zipRes.ok) {
+            const zipData = await zipRes.json();
+            if (zipData.places && zipData.places[0]) {
+              lat = zipData.places[0].latitude.toString();
+              lon = zipData.places[0].longitude.toString();
+              city = `${zipData.places[0]["place name"].toUpperCase()}, ${zipData["post code"]}`;
+            }
+          }
+        } else {
+          // City name geocoding via Open-Meteo
+          const geoRes = await robustFetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(qStr)}&count=1`);
+          const geoData = await geoRes.json();
+          if (geoData.results && geoData.results[0]) {
+            lat = geoData.results[0].latitude.toString();
+            lon = geoData.results[0].longitude.toString();
+            city = geoData.results[0].name.toUpperCase();
+          }
         }
       } catch (e) {
         console.error("Geocoding error", e);
